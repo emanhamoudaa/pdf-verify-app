@@ -95,23 +95,18 @@ def documents():
     pdf_url = None
 
     if drn:
-        try:
-            # التحقق من وجود الملف في Cloudinary
-            result = cloudinary.api.resource(f"pdfs/{drn}.pdf", resource_type="raw")
-            # الحصول على الرابط المباشر
-            pdf_url = result.get('secure_url')
-        except Exception as e:
-            print("Error fetching PDF:", e)
-            pdf_url = None
+        # توجيه الـ iframe لاستخدام مسار الـ proxy الداخلي
+        pdf_url = url_for('pdf_proxy', drn=drn)
 
     return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url)
+  
 @app.route('/upload', methods=['POST'])
 def upload_file():
     custom_drn = request.form.get('custom_drn', '').strip()
     file = request.files.get('pdf_file')
 
     if custom_drn and file:
-        # رفع الملف مع تحديد الـ public_id بامتداد .pdf
+        # رفع الملف إلى Cloudinary
         cloudinary.uploader.upload(
             file,
             public_id=f"pdfs/{custom_drn}.pdf",
@@ -120,3 +115,19 @@ def upload_file():
         return redirect(url_for('documents', drn=custom_drn))
     
     return redirect(url_for('documents'))
+@app.route('/pdf_proxy/<drn>')
+def pdf_proxy(drn):
+    try:
+        # جلب رابط الملف المباشر من Cloudinary
+        result = cloudinary.api.resource(f"pdfs/{drn}.pdf", resource_type="raw")
+        url = result.get('secure_url')
+        
+        # تحميل محتوى الملف من Cloudinary
+        res = requests.get(url)
+        
+        # إرجاع الملف للمتصفح كـ PDF مع إجباره على العرض الداخلي inline
+        response = Response(res.content, content_type='application/pdf')
+        response.headers['Content-Disposition'] = f'inline; filename="{drn}.pdf"'
+        return response
+    except Exception as e:
+        return "File not found", 404
