@@ -204,16 +204,18 @@ def documents():
     barcode_url = None
 
     if drn:
+        # 1. جلب رابط الـ PDF
         try:
-            # رابط الـ PDF
             pdf_result = cloudinary.api.resource(f"pdfs/{drn}", resource_type="raw")
             pdf_url = pdf_result.get('secure_url')
+        except Exception:
+            pdf_url = None
 
-            # رابط صورة الباركود
+        # 2. جلب رابط الباركود (إن وجد) بشكل منفصل حتى لا يتعطل عرض الـ PDF
+        try:
             barcode_result = cloudinary.api.resource(f"barcodes/{drn}", resource_type="image")
             barcode_url = barcode_result.get('secure_url')
         except Exception:
-            pdf_url = None
             barcode_url = None
 
     return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url, barcode_url=barcode_url)
