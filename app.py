@@ -104,17 +104,21 @@ def documents():
     barcode_url = None
 
     if drn:
-        try:
-            pdf_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/pdfs/{drn}.pdf"
-            barcode_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/image/upload/barcodes/{drn}.png"
+        # توليد روابط Cloudinary المباشرة
+        pdf_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/pdfs/{drn}.pdf"
+        barcode_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/image/upload/barcodes/{drn}.png"
 
-            res = requests.head(pdf_url, timeout=5)
-            if res.status_code != 200:
-                pdf_url = None
-                barcode_url = None
-        except Exception:
-            pdf_url = None
-            barcode_url = None
+    return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url, barcode_url=barcode_url)@app.route('/')
+@app.route('/Documents')
+def documents():
+    drn = request.args.get('drn', '').strip()
+    pdf_url = None
+    barcode_url = None
+
+    if drn:
+        # توليد روابط Cloudinary المباشرة
+        pdf_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/pdfs/{drn}.pdf"
+        barcode_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/image/upload/barcodes/{drn}.png"
 
     return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url, barcode_url=barcode_url)
 
