@@ -4,20 +4,26 @@ import requests
 from flask import Flask, render_template_string, request, redirect, url_for, flash
 import cloudinary
 import cloudinary.uploader
-import cloudinary.api
-from pypdf import PdfReader
 import barcode
 from barcode.writer import ImageWriter
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key_123'
 
-# إعدادات Cloudinary
-cloudinary.config( 
-  cloud_name = "vdzxisy2", 
-  api_key = "873658453387589", 
-  api_secret = "a9BPWsKjpp1oC1-hNDRwv-w_boM",
-  secure = True
+# =========================================================
+# بيانات الاعتماد الخاصة بـ Cloudinary
+# =========================================================
+CLOUDINARY_CLOUD_NAME = "vdzxisy2"
+CLOUDINARY_API_KEY = "873658453387589"
+# ⚠️ استبدلي النص التالي بـ API Secret الحقيقي والكامل من حسابك في Cloudinary:
+CLOUDINARY_API_SECRET = "a9BPwsKjpp1oCl-hNDrWv-w_boM"
+
+# ضبط إعدادات Cloudinary
+cloudinary.config(
+    cloud_name=CLOUDINARY_CLOUD_NAME.strip(),
+    api_key=CLOUDINARY_API_KEY.strip(),
+    api_secret=CLOUDINARY_API_SECRET.strip(),
+    secure=True
 )
 
 HTML_TEMPLATE = """
@@ -36,10 +42,10 @@ HTML_TEMPLATE = """
         input[type="file"] { padding: 5px; }
         .btn-green { background-color: #28a745; color: white; padding: 8px 18px; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; }
         .btn-green:hover { background-color: #218838; }
-        .pdf-viewer { width: 90%; height: 600px; margin: 20px auto; border: 1px solid #ccc; background: #525659; }
+        .pdf-viewer { width: 90%; height: 650px; margin: 20px auto; border: 1px solid #ccc; background: #525659; }
         .no-doc { color: #333; margin-top: 30px; font-size: 16px; font-weight: bold; }
-        .alert { background-color: #f8d7da; color: #721c24; padding: 10px; margin: 10px auto; width: 80%; border-radius: 4px; }
-        .success { background-color: #d4edda; color: #155724; padding: 10px; margin: 10px auto; width: 80%; border-radius: 4px; }
+        .alert { background-color: #f8d7da; color: #721c24; padding: 10px; margin: 10px auto; width: 85%; border-radius: 4px; font-weight: bold; }
+        .success { background-color: #d4edda; color: #155724; padding: 10px; margin: 10px auto; width: 85%; border-radius: 4px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -65,17 +71,15 @@ HTML_TEMPLATE = """
       {% endif %}
     {% endwith %}
 
-    <!-- لوحة التحكم للرفع -->
     <div class="admin-panel" dir="rtl">
         <span>[أدوات الإدارة] رفع مستند PDF ورابطه بـ DRN جديد:</span>
         <form action="/upload" method="POST" enctype="multipart/form-data" style="margin:0; display:flex; gap:10px; align-items:center;">
-            <input type="text" name="custom_drn" placeholder="أدخل رقم الـ DRN (مثل 1001)" required>
+            <input type="text" name="custom_drn" placeholder="أدخل رقم الـ DRN (مثل 123123)" required>
             <input type="file" name="pdf_file" accept=".pdf" required>
             <button type="submit" class="btn-green">رفع وحفظ</button>
         </form>
     </div>
 
-    <!-- عرض الباركود والمستند -->
     {% if pdf_url %}
         {% if barcode_url %}
             <div style="margin: 15px 0;">
@@ -100,25 +104,16 @@ def documents():
     barcode_url = None
 
     if drn:
-        # البحث عن ملف الـ PDF بـ Public ID المباشر شامل الامتداد
         try:
-            # استخدام الرابط المباشر من Cloudinary
-            pdf_url = cloudinary.utils.cloudinary_url(f"pdfs/{drn}.pdf", resource_type="raw")[0]
-            
-            # التأكد من وجود الملف بإرسال طلب فحص بسيط (HEAD/GET)
-            res = requests.head(pdf_url)
+            pdf_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/pdfs/{drn}.pdf"
+            barcode_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/image/upload/barcodes/{drn}.png"
+
+            res = requests.head(pdf_url, timeout=5)
             if res.status_code != 200:
                 pdf_url = None
-        except Exception:
-            pdf_url = None
-
-        # جلب الباركود
-        try:
-            barcode_url = cloudinary.utils.cloudinary_url(f"barcodes/{drn}.png", resource_type="image")[0]
-            res_b = requests.head(barcode_url)
-            if res_b.status_code != 200:
                 barcode_url = None
         except Exception:
+            pdf_url = None
             barcode_url = None
 
     return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url, barcode_url=barcode_url)
@@ -132,27 +127,29 @@ def upload_file():
         try:
             file_bytes = file.read()
 
-            # 1. إنشاء صورة الباركود Code128
+            # 1. إنشاء باركود Code128
             code128 = barcode.get_barcode_class('code128')
             rv = io.BytesIO()
             code = code128(custom_drn, writer=ImageWriter())
             code.write(rv)
             rv.seek(0)
 
-            # 2. رفع الـ PDF إلى Cloudinary باسم واضح يشمل .pdf
-            upload_pdf_res = cloudinary.uploader.upload(
-                io.BytesIO(file_bytes),
+            # 2. رفع الـ PDF إلى Cloudinary
+            cloudinary.uploader.upload(
+                file_bytes,
                 public_id=f"pdfs/{custom_drn}.pdf",
                 resource_type="raw",
-                overwrite=True
+                overwrite=True,
+                invalidate=True
             )
 
-            # 3. رفع الباركود إلى Cloudinary
+            # 3. رفع صورة الباركود إلى Cloudinary
             cloudinary.uploader.upload(
                 rv,
                 public_id=f"barcodes/{custom_drn}.png",
                 resource_type="image",
-                overwrite=True
+                overwrite=True,
+                invalidate=True
             )
 
             flash(f"تم رفع المستند بنجاح برقم DRN: {custom_drn}", "success")
