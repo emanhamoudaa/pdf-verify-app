@@ -1,10 +1,13 @@
 import os
+import io
 import requests
-from flask import Flask, render_template_string, request, redirect, url_for, Response
+from flask import Flask, render_template_string, request, redirect, url_for
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
-
+from pypdf import PdfReader
+import barcode
+from barcode.writer import ImageWriter
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key'
@@ -13,201 +16,95 @@ app.secret_key = 'super_secret_key'
 cloudinary.config( 
   cloud_name = "vdzxisy2", 
   api_key = "873658453387589", 
-  api_secret = "a9BPwsKjpp1oCl-hNDrWv-w_boM",
+  api_secret = "a9BPWsKjpp1oC1-hNDRwv-w_boM",
   secure = True
 )
 
-# مجلد حفظ واستعراض ملفات الـ PDF
-UPLOAD_FOLDER = 'uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# تصميم HTML/CSS مطابق تماماً للواجهة التي بالصورة
-HTML_TEMPLATE = '''
+# القالب المطابق تماماً للواجهة الخاصة بكِ
+HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FZA - Verify Document</title>
+    <title>ePortal - AFZ Document Verification</title>
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
-        }
-        body {
-            background-color: #eef1f5;
-            padding: 20px;
-        }
-        .main-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: #ffffff;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        /* الشريط العلوي */
-        .header-bar {
-            background-color: #1a1a1a;
-            color: #ffffff;
-            padding: 12px 20px;
-            font-size: 18px;
-            font-weight: bold;
-        }
-        /* منطقة البحث */
-        .search-section {
-            padding: 20px;
-            background-color: #ffffff;
-        }
-        .input-label {
-            display: block;
-            color: #888888;
-            font-size: 14px;
-            margin-bottom: 8px;
-        }
-        .drn-input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 3px;
-            font-size: 15px;
-            color: #555555;
-            margin-bottom: 15px;
-            outline: none;
-        }
-        /* الأزرار */
-        .buttons-row {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .btn-search {
-            flex: 2;
-            background-color: #1a1a1a;
-            color: white;
-            padding: 10px;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 14px;
-            text-align: center;
-        }
-        .btn-download {
-            flex: 1;
-            background-color: #1a1a1a;
-            color: white;
-            padding: 10px;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 14px;
-            text-align: center;
-            text-decoration: none;
-        }
-        .btn-search:hover, .btn-download:hover {
-            background-color: #333333;
-        }
-        /* منطقة عرض المستند */
-        .pdf-viewer-container {
-            width: 100%;
-            height: 800px;
-            border: 1px solid #ccc;
-            background-color: #525659;
-        }
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-        .no-doc {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100%;
-            color: #ffffff;
-            font-size: 18px;
-        }
-        /* نمط رفع ملف جديد للتجربة */
-        .upload-box {
-            background: #f8f9fa;
-            border: 1px dashed #ccc;
-            padding: 15px;
-            margin-bottom: 15px;
-            text-align: center;
-        }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #eef1f5; text-align: center; }
+        .top-bar { background-color: #f8f9fa; padding: 10px 20px; text-align: left; border-bottom: 1px solid #ddd; }
+        .search-container { background-color: #212529; color: white; padding: 12px; font-weight: bold; font-size: 16px; margin-bottom: 5px; }
+        .download-btn { float: right; background-color: #6c757d; color: white; padding: 6px 15px; border: none; border-radius: 3px; cursor: pointer; }
+        .search-box { padding: 15px; background: #fff; border-bottom: 2px solid #ddd; }
+        .admin-panel { background-color: #f1f3f5; padding: 10px; margin: 10px auto; width: 90%; max-width: 900px; border: 1px solid #ced4da; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; }
+        input[type="text"] { padding: 8px; width: 250px; border: 1px solid #ccc; border-radius: 3px; }
+        input[type="file"] { padding: 5px; }
+        .btn-green { background-color: #28a745; color: white; padding: 8px 18px; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; }
+        .btn-green:hover { background-color: #218838; }
+        .pdf-viewer { width: 90%; height: 600px; margin: 20px auto; border: 1px solid #ccc; background: #525659; }
+        .no-doc { color: #333; margin-top: 30px; font-size: 16px; }
+        .barcode-section { margin: 15px 0; }
     </style>
 </head>
 <body>
 
-<div class="main-container">
-    <!-- الشريط العلوي -->
-    <div class="header-bar">
-        Verify Document
+    <div class="top-bar">
+        <input type="text" id="top_drn" placeholder="Enter Document Number" value="{{ current_drn or '' }}" onchange="location.href='/Documents?drn='+this.value">
     </div>
 
-    <div class="search-section">
-        <!-- نموذج البحث عبر الـ DRN -->
-        <form method="GET" action="/Documents">
-            <label class="input-label">Enter Document Number</label>
-            <input type="text" name="drn" class="drn-input" value="{{ current_drn }}" placeholder="e.g. 7558fa20-345a-47a9-8e03-b9e9708c5ee9">
-            
-            <div class="buttons-row">
-                <button type="submit" class="btn-search">Search</button>
-                {% if pdf_exists %}
-                    <a href="/download/{{ current_drn }}" class="btn-download">Download</a>
-                {% else %}
-                    <button type="button" class="btn-download" style="opacity: 0.5; cursor: not-allowed;">Download</button>
-                {% endif %}
-            </div>
+    <div class="search-container">
+        Search
+        <button class="download-btn">Download</button>
+    </div>
+
+    <!-- لوحة التحكم للرفع -->
+    <div class="admin-panel" dir="rtl">
+        <span>[أدوات الإدارة] رفع مستند PDF ورابطه بـ DRN جديد:</span>
+        <form action="/upload" method="POST" enctype="multipart/form-data" style="margin:0; display:flex; gap:10px; align-items:center;">
+            <input type="text" name="custom_drn" placeholder="أدخل رقم الـ DRN للمستند" required>
+            <input type="file" name="pdf_file" accept=".pdf" required>
+            <button type="submit" class="btn-green">رفع وحفظ</button>
         </form>
-
-        <!-- رفع ملف جديد برقم DRN محدد -->
-        <div class="upload-box">
-            <form method="POST" action="/upload" enctype="multipart/form-data">
-                <label style="font-size: 13px; font-weight: bold;">[أدوات الإدارة] رفع مستند PDF جديد ورابطه بـ DRN:</label><br><br>
-                <input type="text" name="custom_drn" placeholder="أدخل رقم الـ DRN للمستند" required style="padding: 5px; width: 250px;">
-                <input type="file" name="pdf_file" accept=".pdf" required style="padding: 5px;">
-                <button type="submit" style="padding: 6px 15px; background: #28a745; color: white; border: none; cursor: pointer;">رفع وحفظ</button>
-            </form>
-        </div>
-
-        <!-- عارض الـ PDF -->
-        <div class="pdf-viewer-container">
-            {% if pdf_exists %}
-                <iframe src="/pdf_stream/{{ current_drn }}#toolbar=1"></iframe>
-            {% else %}
-                <div class="no-doc">
-                    {% if current_drn %}
-                        No document found for DRN: {{ current_drn }}
-                    {% else %}
-                        Please enter a Document Number or upload a PDF.
-                    {% endif %}
-                </div>
-            {% endif %}
-        </div>
     </div>
-</div>
+
+    <!-- عرض الباركود والمستند -->
+    {% if pdf_url %}
+        {% if barcode_url %}
+            <div class="barcode-section">
+                <h4>الباركود الخاص بالمستند:</h4>
+                <img src="{{ barcode_url }}" alt="Document Barcode" style="max-width: 250px;">
+            </div>
+        {% endif %}
+        
+        <iframe class="pdf-viewer" src="{{ pdf_url }}"></iframe>
+    {% elif current_drn %}
+        <div class="no-doc">No document found for DRN: {{ current_drn }}</div>
+    {% endif %}
 
 </body>
 </html>
-'''
+"""
 
 @app.route('/')
 @app.route('/Documents')
 def documents():
     drn = request.args.get('drn', '').strip()
     pdf_url = None
+    barcode_url = None
 
     if drn:
+        # 1. جلب رابط الـ PDF من Cloudinary
         try:
-            # الحصول على رابط الملف مباشرة من Cloudinary
-            result = cloudinary.api.resource(f"pdfs/{drn}", resource_type="raw")
-            pdf_url = result.get('secure_url')
+            pdf_result = cloudinary.api.resource(f"pdfs/{drn}", resource_type="raw")
+            pdf_url = pdf_result.get('secure_url')
         except Exception:
             pdf_url = None
 
-    return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url)
+        # 2. جلب رابط الباركود بشكل منفصل
+        try:
+            barcode_result = cloudinary.api.resource(f"barcodes/{drn}", resource_type="image")
+            barcode_url = barcode_result.get('secure_url')
+        except Exception:
+            barcode_url = None
+
+    return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url, barcode_url=barcode_url)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -215,29 +112,44 @@ def upload_file():
     file = request.files.get('pdf_file')
 
     if custom_drn and file:
-        # رفع الملف مباشرة إلى Cloudinary باستخدام الـ DRN كـ public_id
-        cloudinary.uploader.upload(
-            file,
-            public_id=f"pdfs/{custom_drn}",
-            resource_type="raw"
-        )
+        try:
+            file_bytes = file.read()
+
+            # قراءة النص داخل الـ PDF
+            pdf_reader = PdfReader(io.BytesIO(file_bytes))
+            extracted_text = ""
+            for page in pdf_reader.pages:
+                text = page.extract_text()
+                if text:
+                    extracted_text += text + "\n"
+
+            # إنشاء صورة الباركود Code128
+            code128 = barcode.get_barcode_class('code128')
+            rv = io.BytesIO()
+            code = code128(custom_drn, writer=ImageWriter())
+            code.write(rv)
+            rv.seek(0)
+
+            # رفع الـ PDF إلى Cloudinary
+            cloudinary.uploader.upload(
+                io.BytesIO(file_bytes),
+                public_id=f"pdfs/{custom_drn}",
+                resource_type="raw"
+            )
+
+            # رفع الباركود إلى Cloudinary
+            cloudinary.uploader.upload(
+                rv,
+                public_id=f"barcodes/{custom_drn}",
+                resource_type="image"
+            )
+
+        except Exception as e:
+            print(f"Error uploading: {e}")
+
         return redirect(url_for('documents', drn=custom_drn))
     
     return redirect(url_for('documents'))
 
-@app.route('/pdf_stream/<drn>')
-def pdf_stream(drn):
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{drn}.pdf")
-    if os.path.exists(file_path):
-        return send_file(file_path, mimetype='application/pdf')
-    return "File Not Found", 404
-
-@app.route('/download/<drn>')
-def download_pdf(drn):
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{drn}.pdf")
-    if os.path.exists(file_path):
-        return send_file(file_path, as_attachment=True, download_name=f"Document_{drn}.pdf")
-    return "File Not Found", 404
-
 if __name__ == '__main__':
-    app.run(debug=True, use_reloader=False, port=5000)
+    app.run(debug=True)
