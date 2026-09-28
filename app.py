@@ -21,7 +21,7 @@ cloudinary.config(
 # مجلد حفظ واستعراض ملفات الـ PDF
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-@@ -184,25 +195,31 @@
+
 @app.route('/')
 @app.route('/Documents')
 def documents():
@@ -61,7 +61,7 @@ def upload_file():
         return redirect(url_for('documents', drn=custom_drn))
 
     return redirect(url_for('documents'))
-@@ -222,4 +239,4 @@ def download_pdf(drn):
+    def download_pdf(drn):
     return "File Not Found", 404
 
 if __name__ == '__main__':
