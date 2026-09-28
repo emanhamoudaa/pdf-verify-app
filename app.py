@@ -61,8 +61,8 @@ def upload_file():
         return redirect(url_for('documents', drn=custom_drn))
 
     return redirect(url_for('documents'))
-    def download_pdf(drn):
-    return "File Not Found", 404
+         def download_pdf(drn):
+         return "File Not Found", 404
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False, port=5000)
