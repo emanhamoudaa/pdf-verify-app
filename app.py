@@ -4,6 +4,10 @@ from flask import Flask, render_template_string, request, redirect, url_for, Res
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
+import io
+from pypdf import PdfReader
+import barcode
+from barcode.writer import ImageWriter
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key'
@@ -197,16 +201,22 @@ HTML_TEMPLATE = '''
 def documents():
     drn = request.args.get('drn', '').strip()
     pdf_url = None
+    barcode_url = None
 
     if drn:
         try:
-            # الحصول على رابط الملف مباشرة من Cloudinary
-            result = cloudinary.api.resource(f"pdfs/{drn}", resource_type="raw")
-            pdf_url = result.get('secure_url')
+            # رابط الـ PDF
+            pdf_result = cloudinary.api.resource(f"pdfs/{drn}", resource_type="raw")
+            pdf_url = pdf_result.get('secure_url')
+
+            # رابط صورة الباركود
+            barcode_result = cloudinary.api.resource(f"barcodes/{drn}", resource_type="image")
+            barcode_url = barcode_result.get('secure_url')
         except Exception:
             pdf_url = None
+            barcode_url = None
 
-    return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url)
+    return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url, barcode_url=barcode_url)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -214,12 +224,42 @@ def upload_file():
     file = request.files.get('pdf_file')
 
     if custom_drn and file:
-        # رفع الملف مباشرة إلى Cloudinary باستخدام الـ DRN كـ public_id
+        # 1. قراءة محتوى ملف الـ PDF
+        pdf_reader = PdfReader(file)
+        extracted_text = ""
+        for page in pdf_reader.pages:
+            text = page.extract_text()
+            if text:
+                extracted_text += text + "\n"
+
+        # 2. تحديد البيانات المراد تحويلها لباركود 
+        # (يمكنك استخدام كامل النص أو أول 100 حرف أو رقم الـ DRN نفسه)
+        barcode_data = custom_drn # أو extracted_text[:100] إذا أردتِ قراءة جزء من نص الـ PDF
+
+        # 3. توليد صورة الباركود في الذاكرة (Code128)
+        code128 = barcode.get_barcode_class('code128')
+        rv = io.BytesIO()
+        code = code128(barcode_data, writer=ImageWriter())
+        code.write(rv)
+        rv.seek(0)
+
+        # 4. إعادة إرجاع مؤشر ملف الـ PDF لأوله لرفعه
+        file.seek(0)
+
+        # 5. رفع ملف الـ PDF إلى Cloudinary
         cloudinary.uploader.upload(
             file,
             public_id=f"pdfs/{custom_drn}",
             resource_type="raw"
         )
+
+        # 6. رفع صورة الباركود المنشأة إلى Cloudinary بنفس رقم الـ DRN
+        cloudinary.uploader.upload(
+            rv,
+            public_id=f"barcodes/{custom_drn}",
+            resource_type="image"
+        )
+
         return redirect(url_for('documents', drn=custom_drn))
     
     return redirect(url_for('documents'))
