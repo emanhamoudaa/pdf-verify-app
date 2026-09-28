@@ -96,29 +96,27 @@ def documents():
 
     if drn:
         try:
-            # البحث عن الملف المرفوع في Cloudinary برقم الـ DRN
-            result = cloudinary.api.resource(f"pdfs/{drn}", resource_type="raw")
+            # التحقق من وجود الملف في Cloudinary
+            result = cloudinary.api.resource(f"pdfs/{drn}.pdf", resource_type="raw")
+            # الحصول على الرابط المباشر
             pdf_url = result.get('secure_url')
-        except Exception:
+        except Exception as e:
+            print("Error fetching PDF:", e)
             pdf_url = None
 
     return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url)
-
 @app.route('/upload', methods=['POST'])
 def upload_file():
     custom_drn = request.form.get('custom_drn', '').strip()
     file = request.files.get('pdf_file')
 
     if custom_drn and file:
-        # رفع الملف مباشرة إلى السحابة مع إعطائه اسم الـ DRN
+        # رفع الملف مع تحديد الـ public_id بامتداد .pdf
         cloudinary.uploader.upload(
             file,
-            public_id=f"pdfs/{custom_drn}",
+            public_id=f"pdfs/{custom_drn}.pdf",
             resource_type="raw"
         )
         return redirect(url_for('documents', drn=custom_drn))
     
     return redirect(url_for('documents'))
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
