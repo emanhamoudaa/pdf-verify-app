@@ -91,8 +91,8 @@ def documents():
     pdf_url = None
 
     if drn:
-        # جلب رابط المستند مباشرة برقم الـ DRN
-        pdf_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/pdfs/{drn}.pdf"
+        # جلب المستند المرفوع مباشرة من الجذر بدون فولدرات
+        pdf_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/{drn}.pdf"
 
     return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url)
 
@@ -103,10 +103,10 @@ def upload_file():
 
     if custom_drn and file:
         try:
-            # رفع الـ PDF مباشرة باسم DRN
+            # رفع الملف مباشرة باسم الـ DRN بدون مجلدات
             cloudinary.uploader.upload(
                 file,
-                public_id=f"pdfs/{custom_drn}.pdf",
+                public_id=f"{custom_drn}.pdf",
                 resource_type="raw",
                 overwrite=True,
                 invalidate=True
