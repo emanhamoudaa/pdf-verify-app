@@ -1,4 +1,7 @@
 Flask
-cloudinary
-requests
+pypdf
+python-barcode
+qrcode
+pillow
 gunicorn
+cloudinary
