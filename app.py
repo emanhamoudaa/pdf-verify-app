@@ -103,31 +103,27 @@ def upload_file():
         return redirect(url_for('documents', drn=custom_drn))
     
     return redirect(url_for('documents'))
-@app.route('/pdf_proxy/<drn>')
+@app.route('/pdf_proxy/')
 def pdf_proxy(drn):
-    url = None
-    # 1. المحاولة الأولى: البحث برقم الـ DRN مع امتداد .pdf
-    try:
-        res_info = cloudinary.api.resource(f"pdfs/{drn}.pdf", resource_type="raw")
-        url = res_info.get('secure_url')
-    except Exception:
-        # 2. المحاولة الثانية: البحث برقم الـ DRN بدون امتداد (للملفات المرفوعة سابقاً)
+    # تكوين الرابط المباشر للملف من Cloudinary مباشرة
+    # نتحقق أولاً من الرابط مع امتداد .pdf ثم بدونه
+    urls_to_try = [
+        f"https://res.cloudinary.com/vdzxisy2/raw/upload/pdfs/{drn}.pdf",
+        f"https://res.cloudinary.com/vdzxisy2/raw/upload/pdfs/{drn}"
+    ]
+    
+    for url in urls_to_try:
         try:
-            res_info = cloudinary.api.resource(f"pdfs/{drn}", resource_type="raw")
-            url = res_info.get('secure_url')
+            res = requests.get(url)
+            if res.status_code == 200:
+                # إرجاع محتوى الملف وتحديد نوعه كـ PDF للعرض المباشر داخل الـ iframe
+                response = Response(res.content, content_type='application/pdf')
+                response.headers['Content-Disposition'] = f'inline; filename="{drn}.pdf"'
+                return response
         except Exception:
-            url = None
+            continue
 
-    if not url:
-        return "Document Not Found", 404
-
-    # جلب محتوى الملف من Cloudinary وتمريره للمتصفح كـ PDF مباشرة
-    res = requests.get(url)
-    response = Response(res.content, content_type='application/pdf')
-    response.headers['Content-Disposition'] = f'inline; filename="{drn}.pdf"'
-    return response
-
-
+    return "Document Not Found", 404
 @app.route('/')
 @app.route('/Documents')
 def documents():
@@ -135,7 +131,6 @@ def documents():
     pdf_url = None
 
     if drn:
-        # استخدام الـ Proxy الداخلي لعرض الملف دائماً بداخل الـ iframe
         pdf_url = url_for('pdf_proxy', drn=drn)
 
     return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url)
