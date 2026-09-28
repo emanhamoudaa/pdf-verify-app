@@ -1,11 +1,7 @@
 import os
-import io
-import requests
 from flask import Flask, render_template_string, request, redirect, url_for, flash
 import cloudinary
 import cloudinary.uploader
-import barcode
-from barcode.writer import ImageWriter
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key_123'
@@ -15,14 +11,12 @@ app.secret_key = 'super_secret_key_123'
 # =========================================================
 CLOUDINARY_CLOUD_NAME = "vdzxisy2"
 CLOUDINARY_API_KEY = "873658453387589"
-# ⚠️ استبدلي النص التالي بـ API Secret الحقيقي والكامل من حسابك في Cloudinary:
-CLOUDINARY_API_SECRET = "a9BPwsKjpp1oCl-hNDrWv-w_boM"
+CLOUDINARY_API_SECRET = "a9BPWsKjpp1oC1-hNDRwv-w_boM"  # تم إرجاع الـ API Secret الخاف بكِ
 
-# ضبط إعدادات Cloudinary
 cloudinary.config(
-    cloud_name=CLOUDINARY_CLOUD_NAME.strip(),
-    api_key=CLOUDINARY_API_KEY.strip(),
-    api_secret=CLOUDINARY_API_SECRET.strip(),
+    cloud_name=CLOUDINARY_CLOUD_NAME,
+    api_key=CLOUDINARY_API_KEY,
+    api_secret=CLOUDINARY_API_SECRET,
     secure=True
 )
 
@@ -81,12 +75,6 @@ HTML_TEMPLATE = """
     </div>
 
     {% if pdf_url %}
-        {% if barcode_url %}
-            <div style="margin: 15px 0;">
-                <img src="{{ barcode_url }}" alt="Document Barcode" style="max-width: 250px;">
-            </div>
-        {% endif %}
-        
         <iframe class="pdf-viewer" src="{{ pdf_url }}"></iframe>
     {% elif current_drn %}
         <div class="no-doc">No document found for DRN: {{ current_drn }}</div>
@@ -101,26 +89,11 @@ HTML_TEMPLATE = """
 def documents():
     drn = request.args.get('drn', '').strip()
     pdf_url = None
-    barcode_url = None
 
     if drn:
-        # توليد روابط Cloudinary المباشرة
         pdf_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/pdfs/{drn}.pdf"
-        barcode_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/image/upload/barcodes/{drn}.png"
 
-    return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url, barcode_url=barcode_url)@app.route('/')
-@app.route('/Documents')
-def documents():
-    drn = request.args.get('drn', '').strip()
-    pdf_url = None
-    barcode_url = None
-
-    if drn:
-        # توليد روابط Cloudinary المباشرة
-        pdf_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/pdfs/{drn}.pdf"
-        barcode_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/image/upload/barcodes/{drn}.png"
-
-    return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url, barcode_url=barcode_url)
+    return render_template_string(HTML_TEMPLATE, current_drn=drn, pdf_url=pdf_url)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -129,29 +102,11 @@ def upload_file():
 
     if custom_drn and file:
         try:
-            file_bytes = file.read()
-
-            # 1. إنشاء باركود Code128
-            code128 = barcode.get_barcode_class('code128')
-            rv = io.BytesIO()
-            code = code128(custom_drn, writer=ImageWriter())
-            code.write(rv)
-            rv.seek(0)
-
-            # 2. رفع الـ PDF إلى Cloudinary
+            # رفع ملف الـ PDF فقط كما كان سابقاً
             cloudinary.uploader.upload(
-                file_bytes,
+                file,
                 public_id=f"pdfs/{custom_drn}.pdf",
                 resource_type="raw",
-                overwrite=True,
-                invalidate=True
-            )
-
-            # 3. رفع صورة الباركود إلى Cloudinary
-            cloudinary.uploader.upload(
-                rv,
-                public_id=f"barcodes/{custom_drn}.png",
-                resource_type="image",
                 overwrite=True,
                 invalidate=True
             )
@@ -167,3 +122,4 @@ def upload_file():
 
 if __name__ == '__main__':
     app.run(debug=True)
+    
